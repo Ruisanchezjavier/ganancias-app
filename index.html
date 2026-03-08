@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Control de Ganancias</title>
+
+<!-- PWA iOS -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Ganancias">
+<meta name="theme-color" content="#c9a84c">
+<link id="apple-touch-icon" rel="apple-touch-icon">
+<link id="pwa-manifest" rel="manifest">
+
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+<script>
+// ── GENERA ÍCONO EN CANVAS ──────────────────────────────────────────
+function buildIcon(size) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const ctx = c.getContext('2d');
+  // Fondo oscuro con esquinas redondeadas
+  const r = size * 0.22;
+  ctx.beginPath();
+  ctx.moveTo(r, 0); ctx.lineTo(size - r, 0);
+  ctx.quadraticCurveTo(size, 0, size, r);
+  ctx.lineTo(size, size - r);
+  ctx.quadraticCurveTo(size, size, size - r, size);
+  ctx.lineTo(r, size); ctx.quadraticCurveTo(0, size, 0, size - r);
+  ctx.lineTo(0, r); ctx.quadraticCurveTo(0, 0, r, 0);
+  ctx.closePath();
+  const bg = ctx.createLinearGradient(0, 0, size, size);
+  bg.addColorStop(0, '#0d1220'); bg.addColorStop(1, '#06090f');
+  ctx.fillStyle = bg; ctx.fill();
+  // Borde dorado
+  ctx.strokeStyle = '#c9a84c'; ctx.lineWidth = size * 0.03;
+  ctx.stroke();
+  // Símbolo $ con estilo serif
+  ctx.fillStyle = '#c9a84c';
+  ctx.font = `900 ${size * 0.52}px 'Georgia', serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('$', size / 2, size / 2 + size * 0.03);
+  // Línea decorativa inferior
+  ctx.strokeStyle = '#c9a84c55'; ctx.lineWidth = size * 0.015;
+  ctx.beginPath();
+  ctx.moveTo(size * 0.25, size * 0.78); ctx.lineTo(size * 0.75, size * 0.78);
+  ctx.stroke();
+  return c.toDataURL('image/png');
+}
+
+// ── MANIFEST vía BLOB ───────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  const icon192 = buildIcon(192);
+  const icon512 = buildIcon(512);
+
+  // Apple touch icon
+  document.getElementById('apple-touch-icon').href = buildIcon(180);
+
+  // Manifest
+  const manifest = {
+    name: 'Control de Ganancias',
+    short_name: 'Ganancias',
+    description: 'Asesoría financiera ejecutiva — rastrea tus ganancias semanales',
+    start_url: '.',
+    display: 'standalone',
+    orientation: 'portrait',
+    background_color: '#06090f',
+    theme_color: '#c9a84c',
+    icons: [
+      { src: icon192, sizes: '192x192', type: 'image/png' },
+      { src: icon512, sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
+    ]
+  };
+  const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+  document.getElementById('pwa-manifest').href = URL.createObjectURL(blob);
+});
+
+// ── SERVICE WORKER vía BLOB (offline) ──────────────────────────────
+if ('serviceWorker' in navigator) {
+  const swCode = `
+    const CACHE = 'ganancias-v1';
+    const ASSETS = [
+      'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600&display=swap',
+      'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js'
+    ];
+    self.addEventListener('install', e => {
+      e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS).catch(() => {})));
+      self.skipWaiting();
+    });
+    self.addEventListener('activate', e => {
+      e.waitUntil(caches.keys().then(keys =>
+        Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+      ));
+      self.clients.claim();
+    });
+    self.addEventListener('fetch', e => {
+      e.respondWith(
+        caches.match(e.request).then(r => r || fetch(e.request).catch(() => new Response('', {status: 503})))
+      );
+    });
+  `;
+  const swBlob = new Blob([swCode], { type: 'application/javascript' });
+  const swURL = URL.createObjectURL(swBlob);
+  navigator.serviceWorker.register(swURL).catch(() => {});
+}
+</script>
+<style>
+  :root {
+    --gold: #c9a84c;
+    --gold-light: #e8c97a;
+    --gold-dim: #c9a84c33;
+    --bg: #06090f;
+    --surface: #0d1220;
+    --surface2: #111827;
+    --text: #e8dfc8;
+    --text-dim: #7a6e58;
+    --green: #4ade80;
+    --red: #f87171;
+    --blue: #60a5fa;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    font-family: 'DM Sans', sans-serif;
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  /* HEADER */
+  header {
+    padding: 28px 36px 22px;
+    border-bottom: 1px solid var(--gold-dim);
+    display: flex; align-items: center; justify-content: space-between;
+    background: linear-gradient(90deg, #06090f 60%, #c9a84c08 100%);
+    position: sticky; top: 0; z-index: 100;
+    backdrop-filter: blur(8px);
+  }
+  .header-left .eyebrow {
+    font-size: 10px; letter-spacing: 4px; color: var(--gold);
+    text-transform: uppercase; margin-bottom: 4px;
+  }
+  .header-left h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: 24px; color: #f5edd8; font-weight: 900; letter-spacing: 0.5px;
+  }
+  .badge {
+    background: linear-gradient(135deg, var(--gold), #8a6d28);
+    border-radius: 8px; padding: 7px 16px;
+    font-size: 10px; font-weight: 700; letter-spacing: 3px;
+    color: #06090f; text-transform: uppercase;
+  }
+
+  /* TABS */
+  nav {
+    display: flex; padding: 0 36px;
+    border-bottom: 1px solid #c9a84c18;
+    background: var(--bg);
+  }
+  nav button {
+    background: none; border: none;
+    padding: 14px 22px;
+    font-family: 'DM Sans', sans-serif; font-size: 13px;
+    cursor: pointer; letter-spacing: 0.5px;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s; color: var(--text-dim);
+  }
+  nav button.active { color: var(--gold); border-bottom-color: var(--gold); font-weight: 600; }
+  nav button:hover:not(.active) { color: #c8b080; }
+
+  /* MAIN */
+  main { padding: 30px 36px; max-width: 1100px; }
+
+  /* KPI GRID */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 16px; margin-bottom: 28px;
+  }
+  .kpi-card {
+    background: linear-gradient(145deg, #111827, #0d1220);
+    border: 1px solid #c9a84c20;
+    border-radius: 14px; padding: 22px 20px;
+    box-shadow: 0 4px 24px #00000055;
+    transition: border-color 0.2s, transform 0.2s;
+  }
+  .kpi-card:hover { border-color: #c9a84c55; transform: translateY(-2px); }
+  .kpi-label {
+    font-size: 9px; letter-spacing: 3px; text-transform: uppercase;
+    color: var(--text-dim); margin-bottom: 10px;
+  }
+  .kpi-value { font-size: 24px; font-weight: 700; font-family: 'Playfair Display', serif; }
+  .kpi-sub { font-size: 11px; color: #4a3a28; margin-top: 6px; }
+
+  /* CHARTS */
+  .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 28px; }
+  .chart-card {
+    background: var(--surface); border: 1px solid #c9a84c18;
+    border-radius: 14px; padding: 22px 20px; min-width: 0;
+  }
+  .chart-wrapper {
+    position: relative; width: 100%; height: 200px;
+  }
+  .chart-wrapper canvas {
+    position: absolute; top: 0; left: 0;
+    width: 100% !important; height: 100% !important;
+  }
+  .chart-title {
+    font-size: 9px; letter-spacing: 3px; color: var(--gold);
+    text-transform: uppercase; margin-bottom: 18px;
+  }
+  @media (max-width: 600px) {
+    .chart-grid { grid-template-columns: 1fr; }
+    .chart-wrapper { height: 180px; }
+  }
+
+  /* ADVISOR */
+  .advisor {
+    background: linear-gradient(135deg, #101520, #0d1117);
+    border: 1px solid #c9a84c44;
+    border-radius: 14px; padding: 24px 26px;
+    position: relative; overflow: hidden;
+  }
+  .advisor::before {
+    content: '';
+    position: absolute; top: -30px; right: -30px;
+    width: 140px; height: 140px;
+    background: radial-gradient(circle, #c9a84c12, transparent 70%);
+    border-radius: 50%;
+  }
+  .advisor-title {
+    font-size: 9px; letter-spacing: 4px; color: var(--gold);
+    text-transform: uppercase; margin-bottom: 12px;
+  }
+  .advisor-text { font-size: 15px; line-height: 1.75; color: #cbb896; }
+
+  /* FORM */
+  .form-card {
+    background: var(--surface);
+    border: 1px solid #c9a84c28;
+    border-radius: 14px; padding: 30px;
+    max-width: 480px;
+  }
+  .form-card h2 {
+    font-family: 'Playfair Display', serif;
+    font-size: 20px; color: #f5edd8; margin-bottom: 26px;
+  }
+  .field { margin-bottom: 20px; }
+  .field label {
+    display: block; font-size: 9px; letter-spacing: 3px;
+    color: var(--gold); text-transform: uppercase; margin-bottom: 8px;
+  }
+  .field input {
+    width: 100%; background: #06090f;
+    border: 1px solid #c9a84c33;
+    border-radius: 8px; padding: 12px 14px;
+    color: var(--text); font-family: 'DM Sans', sans-serif;
+    font-size: 15px; outline: none;
+    transition: border-color 0.2s;
+  }
+  .field input:focus { border-color: var(--gold); }
+  .net-preview {
+    background: #06090f; border: 1px solid #c9a84c33;
+    border-radius: 8px; padding: 12px 16px; margin-bottom: 22px;
+    font-size: 13px; color: var(--text-dim);
+  }
+  .net-preview span { font-size: 18px; font-weight: 700; margin-left: 8px; }
+  .btn-primary {
+    width: 100%; background: linear-gradient(135deg, var(--gold), #8a6d28);
+    border: none; border-radius: 8px; padding: 14px;
+    color: #06090f; font-family: 'DM Sans', sans-serif;
+    font-size: 13px; font-weight: 700; letter-spacing: 1.5px;
+    text-transform: uppercase; cursor: pointer;
+    transition: opacity 0.2s, transform 0.15s;
+  }
+  .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+  .btn-cancel {
+    background: none; border: 1px solid #c9a84c33;
+    border-radius: 8px; padding: 14px 18px;
+    color: var(--text-dim); font-family: 'DM Sans', sans-serif;
+    font-size: 13px; cursor: pointer; margin-left: 10px;
+    transition: border-color 0.2s;
+  }
+  .btn-cancel:hover { border-color: var(--gold); color: var(--gold); }
+  .btn-row { display: flex; }
+
+  /* TABLE */
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  thead tr { border-bottom: 1px solid #c9a84c33; }
+  thead th {
+    text-align: left; padding: 10px 14px;
+    font-size: 9px; letter-spacing: 3px;
+    color: var(--gold); text-transform: uppercase; font-weight: 600;
+  }
+  tbody tr {
+    border-bottom: 1px solid #c9a84c0e;
+    transition: background 0.15s;
+  }
+  tbody tr:hover { background: #c9a84c06; }
+  tbody td { padding: 14px 14px; }
+  .btn-edit {
+    background: none; border: 1px solid #c9a84c33;
+    border-radius: 6px; padding: 4px 10px;
+    color: var(--gold); cursor: pointer; font-size: 12px; margin-right: 6px;
+    transition: all 0.15s;
+  }
+  .btn-edit:hover { background: #c9a84c22; }
+  .btn-del {
+    background: none; border: 1px solid #f8717133;
+    border-radius: 6px; padding: 4px 10px;
+    color: var(--red); cursor: pointer; font-size: 12px;
+    transition: all 0.15s;
+  }
+  .btn-del:hover { background: #f8717122; }
+
+  .empty-state {
+    text-align: center; padding: 70px 20px; color: #3a3028;
+  }
+  .empty-state .icon { font-size: 44px; margin-bottom: 14px; }
+
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  @media (max-width: 768px) {
+    header, nav, main { padding-left: 18px; padding-right: 18px; }
+    .kpi-grid { grid-template-columns: 1fr 1fr; }
+    .chart-grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 480px) {
+    .kpi-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <div class="eyebrow">Asesoría Financiera Ejecutiva</div>
+    <h1>Control de Ganancias</h1>
+  </div>
+  <div class="badge">Servicios</div>
+</header>
+
+<nav>
+  <button class="active" onclick="switchTab('dashboard', this)">📊 Dashboard</button>
+  <button onclick="switchTab('agregar', this)" id="tab-agregar-btn">➕ Nueva Semana</button>
+  <button onclick="switchTab('historial', this)">📋 Historial</button>
+</nav>
+
+<main>
+  <!-- DASHBOARD -->
+  <div id="tab-dashboard" class="tab-content active">
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-label">Total Ingresos</div>
+        <div class="kpi-value" style="color:var(--green)" id="kpi-ingresos">$0.00</div>
+        <div class="kpi-sub" id="kpi-weeks">0 semanas</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Total Gastos</div>
+        <div class="kpi-value" style="color:var(--red)" id="kpi-gastos">$0.00</div>
+        <div class="kpi-sub">Acumulado</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Ganancia Neta</div>
+        <div class="kpi-value" id="kpi-neto">$0.00</div>
+        <div class="kpi-sub">Resultado final</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Total Propinas</div>
+        <div class="kpi-value" style="color:#a78bfa" id="kpi-propinas">$0.00</div>
+        <div class="kpi-sub">Acumulado</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Margen Global</div>
+        <div class="kpi-value" style="color:var(--blue)" id="kpi-margen">0%</div>
+        <div class="kpi-sub">Sobre ingresos</div>
+      </div>
+    </div>
+
+    <div class="chart-grid" id="charts-section">
+      <div class="chart-card">
+        <div class="chart-title">Ingresos vs Gastos</div>
+        <div class="chart-wrapper"><canvas id="barChart"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Tendencia Neta</div>
+        <div class="chart-wrapper"><canvas id="lineChart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="advisor">
+      <div class="advisor-title">🧠 Análisis del Asesor</div>
+      <div class="advisor-text" id="advisor-text">Ingresa tu primera semana y comenzaré a analizar tu negocio.</div>
+    </div>
+  </div>
+
+  <!-- AGREGAR -->
+  <div id="tab-agregar" class="tab-content">
+    <div class="form-card">
+      <h2 id="form-title">➕ Registrar Nueva Semana</h2>
+      <input type="hidden" id="editing-index" value="-1">
+
+      <div class="field">
+        <label>Nombre / Período</label>
+        <input type="text" id="f-label" placeholder="Ej: Semana 1 — Mar 3-8">
+      </div>
+      <div class="field">
+        <label>Ingresos Totales ($)</label>
+        <input type="number" id="f-ingresos" placeholder="0.00" min="0" step="0.01" oninput="updatePreview()">
+      </div>
+      <div class="field">
+        <label>Propinas ($)</label>
+        <input type="number" id="f-propinas" placeholder="0.00" min="0" step="0.01" oninput="updatePreview()">
+      </div>
+      <div class="field">
+        <label>Gastos / Costos ($)</label>
+        <input type="number" id="f-gastos" placeholder="0.00" min="0" step="0.01" oninput="updatePreview()">
+      </div>
+
+      <div class="net-preview" id="net-preview" style="display:none">
+        Ganancia Neta estimada: <span id="net-preview-val">$0.00</span>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn-primary" onclick="saveWeek()" id="btn-save">REGISTRAR SEMANA</button>
+        <button class="btn-cancel" id="btn-cancel" onclick="cancelEdit()" style="display:none">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- HISTORIAL -->
+  <div id="tab-historial" class="tab-content">
+    <div id="historial-container"></div>
+  </div>
+</main>
+
+<script>
+const STORAGE_KEY = 'ganancias_v1';
+let weeks = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+let barChartInst = null, lineChartInst = null;
+
+const fmt = (n) => new Intl.NumberFormat('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
+const save = () => localStorage.setItem(STORAGE_KEY, JSON.stringify(weeks));
+
+function switchTab(id, btn) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + id).classList.add('active');
+  btn.classList.add('active');
+  if (id === 'dashboard') renderDashboard();
+  if (id === 'historial') renderHistorial();
+}
+
+function updatePreview() {
+  const ing = parseFloat(document.getElementById('f-ingresos').value) || 0;
+  const prop = parseFloat(document.getElementById('f-propinas').value) || 0;
+  const gas = parseFloat(document.getElementById('f-gastos').value) || 0;
+  const net = ing + prop - gas;
+  const el = document.getElementById('net-preview');
+  const val = document.getElementById('net-preview-val');
+  if (document.getElementById('f-ingresos').value !== '' || document.getElementById('f-gastos').value !== '' || document.getElementById('f-propinas').value !== '') {
+    el.style.display = 'block';
+    val.textContent = '$' + fmt(net);
+    val.style.color = net >= 0 ? 'var(--green)' : 'var(--red)';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+function saveWeek() {
+  const label = document.getElementById('f-label').value.trim();
+  const ingresos = parseFloat(document.getElementById('f-ingresos').value);
+  const propinas = parseFloat(document.getElementById('f-propinas').value) || 0;
+  const gastos = parseFloat(document.getElementById('f-gastos').value);
+  const idx = parseInt(document.getElementById('editing-index').value);
+  if (!label || isNaN(ingresos) || isNaN(gastos)) {
+    alert('Por favor completa todos los campos.');
+    return;
+  }
+  const entry = { label, ingresos, propinas, gastos };
+  if (idx >= 0) {
+    weeks[idx] = entry;
+  } else {
+    weeks.push(entry);
+  }
+  save();
+  resetForm();
+  switchTab('dashboard', document.querySelector('nav button'));
+}
+
+function resetForm() {
+  document.getElementById('f-label').value = '';
+  document.getElementById('f-ingresos').value = '';
+  document.getElementById('f-propinas').value = '';
+  document.getElementById('f-gastos').value = '';
+  document.getElementById('editing-index').value = '-1';
+  document.getElementById('net-preview').style.display = 'none';
+  document.getElementById('form-title').textContent = '➕ Registrar Nueva Semana';
+  document.getElementById('btn-save').textContent = 'REGISTRAR SEMANA';
+  document.getElementById('btn-cancel').style.display = 'none';
+  document.getElementById('tab-agregar-btn').textContent = '➕ Nueva Semana';
+}
+
+function cancelEdit() {
+  resetForm();
+  switchTab('dashboard', document.querySelector('nav button'));
+}
+
+function editWeek(i) {
+  const w = weeks[i];
+  document.getElementById('f-label').value = w.label;
+  document.getElementById('f-ingresos').value = w.ingresos;
+  document.getElementById('f-propinas').value = w.propinas || 0;
+  document.getElementById('f-gastos').value = w.gastos;
+  document.getElementById('editing-index').value = i;
+  document.getElementById('form-title').textContent = '✏️ Editar Semana';
+  document.getElementById('btn-save').textContent = 'GUARDAR CAMBIOS';
+  document.getElementById('btn-cancel').style.display = 'inline-block';
+  document.getElementById('tab-agregar-btn').textContent = '✏️ Editar Semana';
+  updatePreview();
+  switchTab('agregar', document.getElementById('tab-agregar-btn'));
+}
+
+function deleteWeek(i) {
+  if (!confirm('¿Eliminar esta semana?')) return;
+  weeks.splice(i, 1);
+  save();
+  renderHistorial();
+  renderDashboard();
+}
+
+function advisor() {
+  if (weeks.length === 0) return 'Ingresa tu primera semana y comenzaré a analizar tu negocio.';
+  const last = weeks[weeks.length - 1];
+  const prop = last.propinas || 0;
+  const totalIng = last.ingresos + prop;
+  const net = totalIng - last.gastos;
+  const margin = totalIng > 0 ? ((net / totalIng) * 100).toFixed(1) : 0;
+  const propNote = prop > 0 ? ` (incluyendo $${fmt(prop)} en propinas)` : '';
+  if (weeks.length >= 2) {
+    const prev = weeks[weeks.length - 2];
+    const prevNet = (prev.ingresos + (prev.propinas || 0)) - prev.gastos;
+    const diff = net - prevNet;
+    const pct = prevNet !== 0 ? ((diff / Math.abs(prevNet)) * 100).toFixed(1) : 0;
+    if (diff > 0) return `📈 Excelente movimiento. Tu ganancia neta subió ${pct}%${propNote}. Margen actual: ${margin}%. Mantén el ritmo — los grandes imperios se construyen con consistencia. Si puedes replicar esto 4 semanas seguidas, estarás listo para escalar.`;
+    if (diff < 0) return `⚠️ Tu ganancia bajó ${Math.abs(pct)}% esta semana${propNote}. Analiza qué gasto aumentó o qué ingreso cayó. Los negocios grandes tienen malas semanas; los líderes las usan para optimizar. ¿Tus gastos son fijos o variables? Esa es la pregunta clave.`;
+    return `⚖️ Semana estable. Margen del ${margin}%${propNote}. La estabilidad es buena, pero el crecimiento es mejor. ¿Qué puedes hacer diferente esta semana para mover el marcador?`;
+  }
+  if (net < 0) return `🚨 Semana en rojo. Gastos superaron ingresos por $${fmt(Math.abs(net))}${propNote}. Revisa cada gasto — no hay lujos cuando hay pérdidas. Recorta lo que no genera valor.`;
+  if (margin > 40) return `🔥 Margen del ${margin}%${propNote}. Eso es de clase mundial para servicios. Protege ese margen como oro — ahí está tu ventaja competitiva.`;
+  return `✅ Primera semana registrada. Margen: ${margin}%${propNote}. Agrega más semanas para ver tendencias y recibir análisis comparativo.`;
+}
+
+function renderDashboard() {
+  const totalIng = weeks.reduce((a, w) => a + w.ingresos, 0);
+  const totalProp = weeks.reduce((a, w) => a + (w.propinas || 0), 0);
+  const totalGas = weeks.reduce((a, w) => a + w.gastos, 0);
+  const totalNet = totalIng + totalProp - totalGas;
+  const totalIncome = totalIng + totalProp;
+  const margin = totalIncome > 0 ? ((totalNet / totalIncome) * 100).toFixed(1) : 0;
+
+  document.getElementById('kpi-ingresos').textContent = '$' + fmt(totalIng);
+  document.getElementById('kpi-propinas').textContent = '$' + fmt(totalProp);
+  document.getElementById('kpi-gastos').textContent = '$' + fmt(totalGas);
+  document.getElementById('kpi-neto').textContent = '$' + fmt(totalNet);
+  document.getElementById('kpi-neto').style.color = totalNet >= 0 ? 'var(--gold)' : 'var(--red)';
+  document.getElementById('kpi-margen').textContent = margin + '%';
+  document.getElementById('kpi-weeks').textContent = weeks.length + ' semana' + (weeks.length !== 1 ? 's' : '') + ' registrada' + (weeks.length !== 1 ? 's' : '');
+  document.getElementById('advisor-text').textContent = advisor();
+
+  // Charts
+  const labels = weeks.map(w => w.label);
+  const ingData = weeks.map(w => w.ingresos + (w.propinas || 0));
+  const gasData = weeks.map(w => w.gastos);
+  const netData = weeks.map(w => w.ingresos + (w.propinas || 0) - w.gastos);
+
+  const chartSection = document.getElementById('charts-section');
+  chartSection.style.display = weeks.length > 0 ? 'grid' : 'none';
+
+  if (weeks.length > 0) {
+    if (barChartInst) barChartInst.destroy();
+    if (lineChartInst) lineChartInst.destroy();
+
+    const chartDefaults = {
+      plugins: { legend: { labels: { color: '#7a6e58', font: { family: 'DM Sans', size: 12 } } }, tooltip: {
+        backgroundColor: '#0d1220', borderColor: '#c9a84c', borderWidth: 1,
+        titleColor: '#c9a84c', bodyColor: '#e8dfc8',
+        callbacks: { label: ctx => ` ${ctx.dataset.label}: $${fmt(ctx.parsed.y)}` }
+      }},
+      scales: {
+        x: { ticks: { color: '#7a6e58', font: { family: 'DM Sans' } }, grid: { color: '#c9a84c0a' } },
+        y: { ticks: { color: '#7a6e58', font: { family: 'DM Sans' }, callback: v => '$' + (v >= 1000 ? (v/1000).toFixed(0)+'k' : v) }, grid: { color: '#c9a84c0a' } }
+      }
+    };
+
+    barChartInst = new Chart(document.getElementById('barChart'), {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          { label: 'Ingresos', data: ingData, backgroundColor: '#4ade8088', borderColor: '#4ade80', borderWidth: 1, borderRadius: 6 },
+          { label: 'Gastos', data: gasData, backgroundColor: '#f8717188', borderColor: '#f87171', borderWidth: 1, borderRadius: 6 }
+        ]
+      },
+      options: { ...chartDefaults, responsive: true, maintainAspectRatio: false }
+    });
+
+    lineChartInst = new Chart(document.getElementById('lineChart'), {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Neto', data: netData,
+          borderColor: '#c9a84c', backgroundColor: '#c9a84c15',
+          pointBackgroundColor: '#c9a84c', pointRadius: 5, pointHoverRadius: 7,
+          borderWidth: 2.5, tension: 0.3, fill: true
+        }]
+      },
+      options: { ...chartDefaults, responsive: true, maintainAspectRatio: false }
+    });
+  }
+}
+
+function renderHistorial() {
+  const container = document.getElementById('historial-container');
+  if (weeks.length === 0) {
+    container.innerHTML = `<div class="empty-state"><div class="icon">📋</div><p>Sin registros aún. Agrega tu primera semana.</p></div>`;
+    return;
+  }
+  let html = `<div style="overflow-x:auto"><table><thead><tr>
+    <th>Semana</th><th>Ingresos</th><th>Propinas</th><th>Gastos</th><th>Neto</th><th>Margen</th><th>Variación</th><th></th>
+  </tr></thead><tbody>`;
+  weeks.forEach((w, i) => {
+    const prop = w.propinas || 0;
+    const totalIng = w.ingresos + prop;
+    const net = totalIng - w.gastos;
+    const margin = totalIng > 0 ? ((net / totalIng) * 100).toFixed(1) : 0;
+    const prev = i > 0 ? weeks[i - 1] : null;
+    const prevNet = prev ? prev.ingresos + (prev.propinas || 0) - prev.gastos : null;
+    const varPct = prevNet !== null && prevNet !== 0 ? (((net - prevNet) / Math.abs(prevNet)) * 100).toFixed(1) : null;
+    const varColor = varPct === null ? '#3a3028' : parseFloat(varPct) >= 0 ? '#4ade80' : '#f87171';
+    const varText = varPct === null ? '—' : (varPct > 0 ? '+' : '') + varPct + '%';
+    html += `<tr>
+      <td style="color:#e8dfc8;font-weight:600">${w.label}</td>
+      <td style="color:#4ade80">$${fmt(w.ingresos)}</td>
+      <td style="color:#a78bfa">$${fmt(prop)}</td>
+      <td style="color:#f87171">$${fmt(w.gastos)}</td>
+      <td style="color:${net>=0?'var(--gold)':'var(--red)'};font-weight:700">$${fmt(net)}</td>
+      <td style="color:var(--blue)">${margin}%</td>
+      <td style="color:${varColor}">${varText}</td>
+      <td>
+        <button class="btn-edit" onclick="editWeek(${i})">✏️</button>
+        <button class="btn-del" onclick="deleteWeek(${i})">✕</button>
+      </td>
+    </tr>`;
+  });
+  html += '</tbody></table></div>';
+  container.innerHTML = html;
+}
+
+// Init
+renderDashboard();
+</script>
+</body>
+</html>
